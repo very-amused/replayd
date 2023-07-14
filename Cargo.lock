@@ -3,5 +3,9 @@
 version = 3
 
 [[package]]
+name = "replayc"
+version = "0.1.0"
+
+[[package]]
 name = "replayd"
 version = "0.1.0"
