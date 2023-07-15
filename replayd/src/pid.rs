@@ -9,11 +9,9 @@ pub fn get_pidfile(runtime_dir: &str) -> String {
 
 /// Read the replayd's pidfile
 pub fn get_pid(pidfile: &str) -> Option<u32> {
-	let file = fs::read_to_string(pidfile);
-	if let Ok(file) = file {
-		file.parse::<u32>().ok()
-	} else {
-		None
+	match fs::read_to_string(pidfile) {
+		Ok(file) => file.parse::<u32>().ok(),
+		_ => None
 	}
 }
 
