@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let pidfile = pid::get_pidfile(&runtime_dir);
 	{
 		let mut sys = System::new();
-		if let Some(old_pid) = pid::get_pid(&pidfile) {
+		if let Some(old_pid) = pid::read_pidfile(&pidfile) {
 			// Error if pid is still running, otherwise ignore (set_pid will truncate)
 			if sys.refresh_process((old_pid as usize).into()) {
 				let err = pid::Error::InstanceRunning(old_pid);
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 	// Create pidfile
 	let active_pid = process::id();
-	pid::set_pid(&pidfile, active_pid).map_err(|err| {
+	pid::write_pidfile(&pidfile, active_pid).map_err(|err| {
 		eprintln!("Failed to set PID");
 		err
 	})?;

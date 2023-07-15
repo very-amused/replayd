@@ -8,7 +8,7 @@ pub fn get_pidfile(runtime_dir: &str) -> String {
 }
 
 /// Read the replayd's pidfile
-pub fn get_pid(pidfile: &str) -> Option<u32> {
+pub fn read_pidfile(pidfile: &str) -> Option<u32> {
 	match fs::read_to_string(pidfile) {
 		Ok(file) => file.parse::<u32>().ok(),
 		_ => None
@@ -16,7 +16,7 @@ pub fn get_pid(pidfile: &str) -> Option<u32> {
 }
 
 /// Set the PID in replayd's pidfile
-pub fn set_pid(pidfile: &str, pid: u32) -> io::Result<()> {
+pub fn write_pidfile(pidfile: &str, pid: u32) -> io::Result<()> {
 	// Open file for writing
 	fs::write(pidfile, pid.to_string())
 }
