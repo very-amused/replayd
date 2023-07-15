@@ -1,15 +1,52 @@
-use std::{error::Error, io};
-
+use std::{error::Error, io, process, fs};
 use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
+use sysinfo::{System,SystemExt, ProcessExt, PidExt};
 
 mod ipc;
+mod pid;
+mod util;
+use ipc::socket;
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+	let runtime_dir = util::runtime_dir();
+
+	// Check if a replayd process is already running
+	let pidfile = pid::get_pidfile(&runtime_dir);
+	{
+		let mut sys = System::new();
+		if let Some(old_pid) = pid::get_pid(&pidfile) {
+			// Error if pid is still running, otherwise ignore (set_pid will truncate)
+			if sys.refresh_process((old_pid as usize).into()) {
+				let err = pid::Error::InstanceRunning(old_pid);
+				eprintln!("{}", err);
+				return Err(err.into());
+			}
+		} else {
+			// Check if any replayd processes are running
+			sys.refresh_processes();
+			if let Some(process) = sys.processes_by_name("replayd").next() {
+				let err = pid::Error::InstanceRunning(process.pid().as_u32());
+				eprintln!("{}", err);
+				return Err(err.into());
+			}
+		}
+	}
+	// Create pidfile
+	let active_pid = process::id();
+	pid::set_pid(&pidfile, active_pid).map_err(|err| {
+		eprintln!("Failed to set PID");
+		err
+	})?;
+
 	// Create socket
-	let socket_path = ipc::socket::socket_path();
-	println!("Listening on {}", socket_path);
+	let socket_path = socket::get_socket_path(&runtime_dir);
+	fs::remove_file(&socket_path).map_err(|err| {
+		eprintln!("Failed to remove old socket");
+		err
+	})?;
+	println!("Listening on {}", &socket_path);
 	let sock = UnixListener::bind(&socket_path)?;
 
 	// Listen for SIGINT/SIGTERM to safely shutdown.
@@ -23,13 +60,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// Start recording thread
 	// TODO: configurable recording on start
 	
+	// Allocate IPC message read buffer
+	let mut ipc_readbuf = socket::ReadBuffer::new();
+	
 
 	// Wait for connections until SIGINT is sent
 	loop {
 		tokio::select! {
 			stream = sock.accept() => match stream {
-				Ok(stream) => {
-					todo!();
+				Ok((mut stream, _)) => {
+					// Read message
+					if let Ok(msg) = ipc_readbuf.read_msg(&mut stream).await {
+						println!("{}", msg);
+					} else {
+						// Notify the client that the message could not be read
+						socket::write_msg(&mut stream, "Error").await.unwrap_or_else(|err| {
+							eprintln!("Failed to write error: {}", err);
+						});
+						continue;
+					}
 				}
 				Err(err) => {
 					eprintln!("Failed to accept connection: {}", err);
@@ -46,11 +95,11 @@ async fn shutdown(
 	record_thread: Option<JoinHandle<()>>,
 	save_threads: Option<JoinSet<io::Result<()>>>) -> Result<(), Box<dyn Error>> {
 	println!("Shutting down");
-	if let Some(thread) = record_thread {
+	if let Some(_thread) = record_thread {
 		println!("Stopping recording");
 		todo!();
 	}
-	if let Some(threads) = save_threads {
+	if let Some(_threads) = save_threads {
 		println!("Saving pending clips");
 		todo!();
 	}
