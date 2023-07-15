@@ -1,41 +1,59 @@
-use std::error::Error;
-use std::mem::size_of;
+use std::{error::Error, io};
 
-use ipc::header::Header;
-use tokio::io::Interest;
-use tokio::net::UnixStream;
+use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 
 mod ipc;
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    println!("Connecting to Unix Socket");
-		let stream = ipc::socket::connect().await?;
+	// Create socket
+	let socket_path = ipc::socket::socket_path();
+	println!("Listening on {}", socket_path);
+	let sock = UnixListener::bind(&socket_path)?;
 
-		// Read and write messages
-		loop {
-			// Wait for socket to be ready for r/w
-			let ready = stream.ready(Interest::READABLE | Interest::WRITABLE).await?;
+	// Listen for SIGINT/SIGTERM to safely shutdown.
+	// tokio::select! must be used to catch these signals
+	// for all future awaits on the main thread
+	let sigint = signal(SignalKind::interrupt())?;
+	let sigterm = signal(SignalKind::terminate())?;
+	tokio::pin!(sigint);
+	tokio::pin!(sigterm);
 
-			if ready.is_readable() {
-				let msg = read_msg(&stream).await?;
-				println!("{}", msg);
-				break;
-			}
-		}
-		Ok(())
-}
+	// Start recording thread
+	// TODO: configurable recording on start
+	
 
-async fn read_msg(stream: &UnixStream) -> Result<String, tokio::io::Error> {
-	// Read message header
-	let mut header_buf = vec![0; ipc::header::HEADER_SIZE];
-	match stream.try_read(header_buf) {
-		Ok(_) => {
-			let mut id: u64;
-			let mut 
+	// Wait for connections until SIGINT is sent
+	loop {
+		tokio::select! {
+			stream = sock.accept() => match stream {
+				Ok(stream) => {
+					todo!();
+				}
+				Err(err) => {
+					eprintln!("Failed to accept connection: {}", err);
+					continue;
+				}
+			},
+			_ = sigint.recv() => return shutdown(None, None).await,
+			_ = sigterm.recv() => return shutdown(None, None).await
 		}
 	}
+}
 
+async fn shutdown(
+	record_thread: Option<JoinHandle<()>>,
+	save_threads: Option<JoinSet<io::Result<()>>>) -> Result<(), Box<dyn Error>> {
+	println!("Shutting down");
+	if let Some(thread) = record_thread {
+		println!("Stopping recording");
+		todo!();
+	}
+	if let Some(threads) = save_threads {
+		println!("Saving pending clips");
+		todo!();
+	}
 
+	Ok(())
 }

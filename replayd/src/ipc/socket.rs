@@ -1,6 +1,3 @@
-use tokio::net::UnixListener;
-use tokio::{net::UnixStream, io::Interest};
-use tokio::io;
 use std::env;
 use users::get_current_uid;
 

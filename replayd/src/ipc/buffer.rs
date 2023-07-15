@@ -3,13 +3,13 @@ use std::{io, u16};
 use tokio::{net::UnixStream, io::{AsyncReadExt,AsyncWriteExt}};
 
 // Size of reusable message buffer
-pub const BUFSIZ: usize = 8192;
+pub const BUF_SIZE: usize = 8192;
 // Message headers are a single u16 describing the message's size in the range 0-BUFSIZ
 const HEADER_SIZE: usize = 2;
 
-/// A reusable buffer for sending/receiving IPC messages
+/// A reusable read buffer for IPC messages
 pub struct Buffer {
-	buf: [u8; BUFSIZ]
+	buf: [u8; BUF_SIZE]
 }
 
 impl Buffer {
@@ -25,26 +25,21 @@ impl Buffer {
 
 		Ok(msg)
 	}
-
-	// Write an IPC message
-	pub async fn write_msg(&mut self, stream: &mut UnixStream, msg: &str) -> io::Result<()> {
-		// Encode and write message size header 
-		if msg.len() > BUFSIZ {
-			let error = io::Error::new(
-				io::ErrorKind::InvalidData,
-				format!("message length exceeds buffer size of {}", BUFSIZ));
-			return Err(error);
-		}
-		stream.write_u16(msg.len() as u16).await?;
-		todo!()
-
-
-		// Write message
-
-
-
-		Ok(())
-	}
 }
 
+// Write an IPC message
+pub async fn write_msg(stream: &mut UnixStream, msg: &str) -> io::Result<()> {
+	// Encode and write message size header 
+	if msg.len() > BUF_SIZE {
+		let error = io::Error::new(
+			io::ErrorKind::InvalidData,
+			format!("message length exceeds buffer size of {}", BUF_SIZE));
+		return Err(error);
+	}
+	stream.write_u16(msg.len() as u16).await?;
 
+	// Write message
+	stream.write(msg.as_bytes()).await?;
+
+	Ok(())
+}
