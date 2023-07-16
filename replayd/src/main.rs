@@ -1,6 +1,6 @@
 use std::{error::Error, io, process, fs};
-use replayd::ipc::message;
-use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
+use replayd::ipc::message::{self, Message};
+use tokio::{net::{UnixListener, UnixStream}, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
 
 mod ipc;
@@ -62,8 +62,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// TODO: configurable recording on start
 	
 	// Allocate IPC message read buffer
-	let mut ipc_readbuf = socket::ReadBuffer::new();
-	
+	let mut ipc_readbuf: [u8; message::BUF_SIZE] = [0 ; message::BUF_SIZE];
+
+	// Create thread pools
+	let mut ipc_threads = JoinSet::new();
 
 	// Wait for connections until SIGINT is sent
 	loop {
@@ -71,15 +73,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			stream = sock.accept() => match stream {
 				Ok((mut stream, _)) => {
 					// Read message
-					if let Ok(msg) = ipc_readbuf.read_msg(&mut stream).await {
-						socket::write_resp(&mut stream, (message::STATUS_SUCCESS, "Yes")).await.unwrap_or_else(|err| {
-							eprintln!("Failed to send response: {}", err)
-						});
-					} else {
-						// Notify the client that the message could not be read
-						socket::write_resp(&mut stream, (message::STATUS_FAIL, "Error")).await.unwrap_or_else(|err| {
-							eprintln!("Failed to write error: {}", err);
-						});
+					stream.readable().await?;
+					match Message::decode(&mut stream, &mut ipc_readbuf).await {
+						Ok(msg) => {
+								ipc_threads.spawn(async move {
+								handle_message(stream, msg).await;
+							});
+						}
+						Err(err) => {
+							eprintln!("{}", err);
+						}
 					}
 				}
 				Err(err) => {
@@ -87,23 +90,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
 					continue;
 				}
 			},
-			_ = sigint.recv() => return shutdown(None, None).await,
-			_ = sigterm.recv() => return shutdown(None, None).await
+			_ = sigint.recv() => return shutdown(None, Some(ipc_threads), None).await,
+			_ = sigterm.recv() => return shutdown(None, Some(ipc_threads), None).await
 		}
 	}
 }
 
+/// Handle message and write response
+async fn handle_message(mut stream: UnixStream, message: Message) {
+	println!("Message received: {}", message.body());
+}
+
 async fn shutdown(
 	record_thread: Option<JoinHandle<()>>,
+	ipc_threads: Option<JoinSet<()>>,
 	save_threads: Option<JoinSet<io::Result<()>>>) -> Result<(), Box<dyn Error>> {
 	println!("Shutting down");
 	if let Some(_thread) = record_thread {
-		println!("Stopping recording");
-		todo!();
+		todo!("Stop recording");
+	}
+	if let Some(mut threads) = ipc_threads {
+		threads.shutdown().await;
 	}
 	if let Some(_threads) = save_threads {
-		println!("Saving pending clips");
-		todo!();
+		todo!("Save pending clips");
 	}
 
 	Ok(())

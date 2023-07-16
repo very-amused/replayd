@@ -1,5 +1,5 @@
 use std::{env, os::unix::net::UnixStream, error::Error};
-use replayd::ipc::{socket, message};
+use replayd::ipc::{socket, message::{self, Message}};
 
 fn main() -> Result<(), Box<dyn Error>>{
 	// Look for commands
@@ -7,14 +7,14 @@ fn main() -> Result<(), Box<dyn Error>>{
 	const SEP: &str = " ";
 	// Fast string iterator folding, credit to mdonoughe 
 	// https://stackoverflow.com/questions/56033289/join-iterator-of-str#comment115603566_56033952
-	let ipc_buf = env::args().skip(1).fold(String::new(), |mut a, b| {
+	let mut ipc_writebuf = env::args().skip(1).fold(String::new(), |mut a, b| {
 		a.reserve(b.len() + 1);
 		a.push_str(&b);
 		a.push_str(SEP);
 		a
 	});
-	let ipc_writebuf = ipc_buf.trim_end();
-	let mut ipc_readbuf = socket::ReadBuffer::new();
+	ipc_writebuf.pop(); // Remove trailing space
+	let mut ipc_readbuf: [u8; message::BUF_SIZE] = [0; message::BUF_SIZE];
 
 	// Send command to socket
 	let socket_path = socket::get_socket_path(replayd::runtime_dir().as_str());
@@ -23,9 +23,8 @@ fn main() -> Result<(), Box<dyn Error>>{
 		err
 	})?;
 
-	socket::write_msg_sync(&mut stream, ipc_writebuf)?;
-	let (status, msg) = ipc_readbuf.read_resp(&mut stream)?;
-	println!("{}", msg);
+	let message = Message::from(ipc_writebuf)?;
+	message.encode(&mut stream)?;
 
 	Ok(())
 }
