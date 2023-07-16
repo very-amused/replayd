@@ -71,13 +71,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				Ok((mut stream, _)) => {
 					// Read message
 					if let Ok(msg) = ipc_readbuf.read_msg(&mut stream).await {
-						println!("{}", msg);
+						socket::write_msg(&mut stream, &format!("Your message: {}", &msg)).await.unwrap_or_else(|err| {
+							eprintln!("Failed to send response: {}", err)
+						});
 					} else {
 						// Notify the client that the message could not be read
 						socket::write_msg(&mut stream, "Error").await.unwrap_or_else(|err| {
 							eprintln!("Failed to write error: {}", err);
 						});
-						continue;
 					}
 				}
 				Err(err) => {
