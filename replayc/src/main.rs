@@ -1,5 +1,5 @@
 use std::{env, os::unix::net::UnixStream, error::Error};
-use replayd::ipc::{socket, message::{self, Message}};
+use replayd::{ipc::{message::{self, Message, Response}}, socket_path};
 
 fn main() -> Result<(), Box<dyn Error>>{
 	// Look for commands
@@ -17,7 +17,8 @@ fn main() -> Result<(), Box<dyn Error>>{
 	let mut ipc_readbuf: [u8; message::BUF_SIZE] = [0; message::BUF_SIZE];
 
 	// Send command to socket
-	let socket_path = socket::get_socket_path(replayd::runtime_dir().as_str());
+	let runtime_dir = replayd::runtime_dir();
+	let socket_path = replayd::socket_path(&runtime_dir);
 	let mut stream = UnixStream::connect(&socket_path).map_err(|err| {
 		eprintln!("Failed to connect to socket at {}", &socket_path);
 		err
@@ -26,7 +27,10 @@ fn main() -> Result<(), Box<dyn Error>>{
 	let message = Message::from(ipc_writebuf)?;
 	message.encode(&mut stream)?;
 
-	Ok(())
+	// Wait for response
+	let resp = Response::decode(&mut stream, &mut ipc_readbuf)?;
+	println!("{}", resp.body());
+	resp.check().map_err(|err| err.into())
 }
 
 

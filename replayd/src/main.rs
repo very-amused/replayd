@@ -1,12 +1,11 @@
 use std::{error::Error, io, process, fs};
-use replayd::ipc::message::{self, Message};
+use replayd::ipc::message::{self, Message, Response};
 use tokio::{net::{UnixListener, UnixStream}, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
 
 mod ipc;
 mod pid;
 mod util;
-use ipc::socket;
 
 
 #[tokio::main]
@@ -42,7 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	})?;
 
 	// Create socket
-	let socket_path = socket::get_socket_path(&runtime_dir);
+	let socket_path = util::socket_path(&runtime_dir);
 	fs::remove_file(&socket_path).map_err(|err| {
 		eprintln!("Failed to remove old socket");
 		err
@@ -98,7 +97,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 /// Handle message and write response
 async fn handle_message(mut stream: UnixStream, message: Message) {
-	println!("Message received: {}", message.body());
+	let msg = format!("Message received: {}", message.body());
+	println!("{}", msg);
+	let resp = Response::from(message::STATUS_SUCCESS, msg).expect("fuck");
+	resp.encode(&mut stream).await.expect("fuck");
 }
 
 async fn shutdown(

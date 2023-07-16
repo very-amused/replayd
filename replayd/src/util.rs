@@ -11,3 +11,7 @@ pub fn runtime_dir() -> String {
 	}
 }
 
+pub fn socket_path(runtime_dir: &str) -> String {
+	const SOCKET_NAME: &str = "replayd.sock";
+	format!("{}/{}", runtime_dir, SOCKET_NAME)
+}
