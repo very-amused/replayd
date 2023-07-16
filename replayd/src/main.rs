@@ -1,4 +1,5 @@
 use std::{error::Error, io, process, fs};
+use replayd::ipc::message;
 use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
 
@@ -71,12 +72,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				Ok((mut stream, _)) => {
 					// Read message
 					if let Ok(msg) = ipc_readbuf.read_msg(&mut stream).await {
-						socket::write_msg(&mut stream, &format!("Your message: {}", &msg)).await.unwrap_or_else(|err| {
+						socket::write_resp(&mut stream, (message::STATUS_SUCCESS, "Yes")).await.unwrap_or_else(|err| {
 							eprintln!("Failed to send response: {}", err)
 						});
 					} else {
 						// Notify the client that the message could not be read
-						socket::write_msg(&mut stream, "Error").await.unwrap_or_else(|err| {
+						socket::write_resp(&mut stream, (message::STATUS_FAIL, "Error")).await.unwrap_or_else(|err| {
 							eprintln!("Failed to write error: {}", err);
 						});
 					}

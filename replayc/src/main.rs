@@ -1,5 +1,5 @@
 use std::{env, os::unix::net::UnixStream, error::Error};
-use replayd::ipc::socket;
+use replayd::ipc::{socket, message};
 
 fn main() -> Result<(), Box<dyn Error>>{
 	// Look for commands
@@ -24,10 +24,8 @@ fn main() -> Result<(), Box<dyn Error>>{
 	})?;
 
 	socket::write_msg_sync(&mut stream, ipc_writebuf)?;
-	let resp = ipc_readbuf.read_msg_sync(&mut stream)?;
-
-
-	println!("{}", resp);
+	let (status, msg) = ipc_readbuf.read_resp(&mut stream)?;
+	println!("{}", msg);
 
 	Ok(())
 }
