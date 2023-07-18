@@ -1,5 +1,5 @@
 use std::{error::Error, io, process, fs};
-use replayd::ipc::message::{self, Message, Response};
+use replayd::ipc::message::{self, Message, Response, STATUS_SUCCESS, STATUS_FAIL};
 use tokio::{net::{UnixListener, UnixStream}, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
 
@@ -75,8 +75,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 					stream.readable().await?;
 					match Message::decode(&mut stream, &mut ipc_readbuf).await {
 						Ok(msg) => {
-								ipc_threads.spawn(async move {
-								handle_message(stream, msg).await;
+							ipc_threads.spawn(async move {
+								// TODO: use eprintln! to log message creation errors, prepare fallback client
+								// error with lazy_static
+								handle_message(stream, msg).await.expect("yes");
 							});
 						}
 						Err(err) => {
@@ -96,11 +98,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 /// Handle message and write response
-async fn handle_message(mut stream: UnixStream, message: Message) {
-	let msg = format!("Message received: {}", message.body());
-	println!("{}", msg);
-	let resp = Response::from(message::STATUS_SUCCESS, msg).expect("fuck");
-	resp.encode(&mut stream).await.expect("fuck");
+async fn handle_message(mut stream: UnixStream, message: Message) -> io::Result<()> {
+	let resp = match message.body() {
+		"status" => {
+			Response::from(STATUS_SUCCESS, "Status message".to_string())
+		},
+		msg => Response::from(STATUS_FAIL, format!("Unknown command: {}", msg))
+	}?;
+
+	resp.encode(&mut stream).await
 }
 
 async fn shutdown(
