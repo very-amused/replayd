@@ -1,11 +1,16 @@
 use std::{error::Error, io, process, fs};
-use replayd::ipc::message::{self, Message, Response, STATUS_SUCCESS, STATUS_FAIL};
-use tokio::{net::{UnixListener, UnixStream}, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
+use replayd::ipc::message::{self, Message, Response, STATUS_FAIL};
+use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
+use lazy_static::lazy_static;
 
 mod ipc;
 mod pid;
 mod util;
+
+lazy_static! {
+	static ref MSG_DECODE_ERR: Response = Response::from(STATUS_FAIL, "Failed to decode message.".to_string()).unwrap();
+}
 
 
 #[tokio::main]
@@ -46,6 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		eprintln!("Failed to remove old socket");
 		err
 	})?;
+
 	println!("Listening on {}", &socket_path);
 	let sock = UnixListener::bind(&socket_path)?;
 
@@ -76,37 +82,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
 					match Message::decode(&mut stream, &mut ipc_readbuf).await {
 						Ok(msg) => {
 							ipc_threads.spawn(async move {
-								// TODO: use eprintln! to log message creation errors, prepare fallback client
-								// error with lazy_static
-								handle_message(stream, msg).await.expect("yes");
+								ipc::handle_command(msg.body(), stream).await;
 							});
 						}
-						Err(err) => {
-							eprintln!("{}", err);
+						Err(e) => {
+							// Decode fail
+							eprintln!("Failed to decode message: {}", e);
+							if let Err(e) = MSG_DECODE_ERR.encode(&mut stream).await {
+								eprintln!("Failed to send message: {}", e);
+							}
 						}
 					}
 				}
 				Err(err) => {
 					eprintln!("Failed to accept connection: {}", err);
-					continue;
 				}
 			},
 			_ = sigint.recv() => return shutdown(None, Some(ipc_threads), None).await,
 			_ = sigterm.recv() => return shutdown(None, Some(ipc_threads), None).await
 		}
 	}
-}
-
-/// Handle message and write response
-async fn handle_message(mut stream: UnixStream, message: Message) -> io::Result<()> {
-	let resp = match message.body() {
-		"status" => {
-			Response::from(STATUS_SUCCESS, "Status message".to_string())
-		},
-		msg => Response::from(STATUS_FAIL, format!("Unknown command: {}", msg))
-	}?;
-
-	resp.encode(&mut stream).await
 }
 
 async fn shutdown(
