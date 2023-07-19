@@ -1,6 +1,12 @@
 use chrono::{self, TimeZone};
 use std::time::Duration;
 use tokio::{time::{self, Interval}, signal::unix::Signal};
+use error::RecordingError;
+use config::Config;
+use ffmpeg_next::{self as ffmpeg, codec::codec::Codec};
+
+pub mod config;
+pub mod error;
 
 /// A desktop recorder which uses 1s chunks
 /// Must run on a separate thread, channels are
@@ -10,7 +16,9 @@ use tokio::{time::{self, Interval}, signal::unix::Signal};
 /// libavcodec uses reference counting for packet structs since version 4.0.0,
 /// TODO
 pub struct Recorder {
-	interval: Interval
+	interval: Interval,
+	
+	pub config: Option<Config>
 }
 
 impl Recorder {
@@ -34,21 +42,20 @@ impl Recorder {
 			}
 		};
 
-		Some(Self{interval})
+		Some(Self{interval, config: None})
+	}
+
+	pub async fn start(&mut self) {
 	}
 }
-
-// Testing constants
-// TODO: remove when config is implemented
 
 
 /// Duration until next second
 /// copied from my_timers
 fn to_next_second() -> Duration {
+	let now = chrono::Utc::now();
 	let next = chrono::Utc.timestamp_opt(
-		chrono::Utc::now().timestamp()+1, 0).unwrap();
+		now.timestamp()+1, 0).unwrap();
 
-	let now = chrono::Utc::now(); // Get duration against current time
-	// Round up to next ms
 	(next - now).to_std().unwrap()
 }
