@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 lazy_static! {
 	static ref RESP_PREPARE_ERR: Response = Response::from(STATUS_FAIL, "Failed to prepare error response.".to_string()).unwrap();
 }
+
 /// Handle command message and write response
 pub async fn handle_command(cmd: &str, mut stream: UnixStream) {
 	let resp = match cmd {
@@ -18,7 +19,7 @@ pub async fn handle_command(cmd: &str, mut stream: UnixStream) {
 
 	let send_result = match resp {
 		Ok(resp) => resp.encode(&mut stream).await, // Send a success response
-		Err(e) => send_error(Box::new(e), &mut stream).await
+		Err(e) => send_error(Box::new(e), &mut stream).await // Send an error response
 	};
 	if let Err(e) = send_result {
 		eprintln!("Failed to send message: {}", e);

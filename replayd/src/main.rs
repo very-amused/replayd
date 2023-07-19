@@ -1,4 +1,5 @@
-use std::{error::Error, io, process, fs};
+use std::{error::Error, time::Duration, io, process, fs};
+use chrono::Timelike;
 use replayd::ipc::message::{self, Message, Response, STATUS_FAIL};
 use tokio::{net::UnixListener, signal::unix::{signal, SignalKind}, task::{JoinHandle, JoinSet}};
 use sysinfo::{System,SystemExt, ProcessExt, PidExt};
@@ -7,6 +8,7 @@ use lazy_static::lazy_static;
 mod ipc;
 mod pid;
 mod util;
+mod recording;
 
 lazy_static! {
 	static ref MSG_DECODE_ERR: Response = Response::from(STATUS_FAIL, "Failed to decode message.".to_string()).unwrap();
@@ -71,6 +73,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	// Create thread pools
 	let mut ipc_threads = JoinSet::new();
+
+	// Create recording thread
 
 	// Wait for connections until SIGINT is sent
 	loop {
